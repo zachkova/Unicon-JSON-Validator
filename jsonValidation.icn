@@ -1,0 +1,379 @@
+#
+############################################################################
+#<p>
+#	<b>File:</b>jsonValidation.icn 
+#</p>    
+#<p>
+#	<b>Subject:</b>This program takes two JSON files (one JSON object file, and one JSON Schema file)
+#	 and compares the two files to make sure the JSON Object File conforms to the JSON Schema file. 
+#</p>		  		
+#<p>		
+#      <b>Author:</b>Hunter Thomas, John Haag, and Zachary Kovalenko
+#</p>
+#<p>	
+#     <b>Via:</b>SUNY College at Brockport Computer Science Department
+#</p>
+#<p>
+# <b>Mentors:</b>Dr.Jafar Al-Gharaibeh, and Dr.Zakariya Qawaqneh  
+#</p>
+#<p>
+#	<b>Date:</b> April 2021     
+#</p>
+############################################################################
+#<p>
+#  This file is in the<i>public domain</i>.
+#</p>
+############################################################################
+#<p>
+# <b>Requires:</b>This program requires a JSON schema file as well as a JSON object file to compare to.
+#</p>		
+#		
+############################################################################
+link basename
+link options
+link io
+link json
+link ximage
+link fullimag
+# <p> 
+#  The<tt>usage</tt>procedure creates command line arguments, for entering Schema file and JSON object file into the program.    
+#</p>
+procedure usage()
+    prog := basename(&progname)
+    write("Usage: ", prog, " [options]\n")
+    write(prog, " is a unicon utility for validating a json file given its schema")
+    write("Options:")
+    write("\t -f : json filename")
+    write("\t -s : json schema file, default to <fname-noext>.schema.json")
+    write("\t -h : show this help\n")
+    exit(-1)
+end
+#<p>
+#The<tt>main</tt>procedure reads in two files, one json file, and one json Schema file 
+#these two files are then passed to the jsValidate procedure.
+#</p>
+procedure main(args)
+    local opts, jfname, sfname, ext
+   # : means that an input is specified
+    opts := options(args, "hs:f:")
+
+    if *opts = 0 then
+       usage()
+
+    # get the json file name, if it is not provided, error out.
+    jfname :=  \opts["f"] | usage()
+
+    # get the schema file
+    if \opts["s"] then
+       sfname :=  opts["s"]
+    else { # default to <fname-noext>.schema.json
+       ext :=  suffix(jfname) # split the name from the extension
+       sfname := ext[1] || ".schema." || ext[2]
+	write(sfname)
+       }
+
+    write("json file  : ", jfname)
+    write("schema file: ", sfname)
+
+    exists(jfname) | stop("file doesn't exist:", jfname)
+    exists(sfname) | stop("file doesn't exist:", sfname)
+
+    js_validate(jfname, sfname)
+end
+
+procedure my_json_error()
+end
+#<p>
+#The<tt>js_validate</tt> procedure takes two parameters
+#<[param jfname is the name of the json File]>
+#<[param sfname is the name of the json Schema File]>
+#This method calls the validation method and passes 3 parameters to it.
+#
+#
+#</p>
+#
+procedure js_validate(jfname, sfname)
+   local json_date, json_schema
+   json_data   := jtou(jfname , "f")
+   json_schema := jtou(sfname , "f")
+
+write("\nJSON Validation: ")
+validationValue :=  validation(json_data, json_schema, json_schema)
+
+write(validationValue)
+
+end
+
+#<p>
+# 
+#The procedure<tt>validCheck</tt> vaildates a properties value with the schema type rules.
+#This procedure takes in two parameters.
+#<[param x is the table]>
+#<[param val is the name of the value of a property]>
+#
+#
+#This procedure is called in the validation procedure.
+# 
+#<[returns validation passed if the value follow the Schema type rules]>
+# will return a different string if the value does not follow the schema type rules.
+#</p>
+
+procedure validCheck(x, val)
+	z := "Validation Passed"
+           case x["type"] of {
+      "object" :{
+	if type(val) ~== "table" then {
+	return "Validation Failed"
+	}
+	req := x["required"]
+		if \req then {
+				i := 1
+				cr := 0
+			while i <= *req do {
+				c := 0
+				every prop := key(val) do{
+				if prop ~== req[i] then c := c + 1
+				if prop == req[i] then cr := cr + 1
+				
+			}
+				if cr = *req then break
+ 
+				if c =  *val then  z := "Validation Failed: Does not contain required properies"
+				i := i + 1
+	}
+	return z
+	}
+	maxProp := x["maxProperties"]
+		if \maxProp then write(space, "    maxProperties: ", left(maxProp, 20))
+	minProp := x["minProperties"]
+		if \minProp then write(space, "   minProperties: ", left(minProp, 20))
+  		return z
+         }
+      "array": {
+	if type(val) ~== "list" then {
+	return "Validation Failed"
+	}
+         y := x["items"]
+	addItems := x["additionalItems"]
+	if \addItems then {
+		 write(space, "   additionalItems: ")
+		dumpschema(x[additems])
+	}
+	minItems := x["minItems"]
+	       if \minItems then write(space, "   minItems: ", left(minItems, 20))
+	uniqueItems := x["uniqueItems"]
+		if \uniqueItems then write(space, "   uniqueItems: ", left(uniqueItems, 20))
+         }
+ 	"string":{
+		if type(val) ~== "string" then {
+			z := "Validation Failed: " || val || " is not a string"
+			return z
+		}
+		else{	
+           enum := x["enum"]
+		if \enum then{
+			i := 0
+			c := 0
+			while i < *enum do {
+				if val ~== enum[i] then c := c + 1 
+				i := i + 1
+			}
+			if c ~= 0 then {
+				z := "Validation Failed: " || val || " is not an allowed value. Allowed values are: " || fullimage(enum)
+				return z
+			}
+		}
+	    const := x["const"]
+		 if \const then {
+			if const ~== val then {
+				z := "Validation Failed: " || val || " is not equal to the constant: " || const
+				return z
+			}
+		}
+	    maxLength := x["maxLength"]
+		if \maxLength then {
+			if *val > maxLength then {
+				z := "Validation Failed: " || val || " is too many characters. Must be less than or equal to " || maxLength || " characters."
+				return z
+			}
+		}
+	    minLength := x["minLength"]
+		if \minLength then write(space, "    minLength: ", left(minLength, 20))
+	    pattern := x["pattern"]
+		if \pattern then write(space, "    pattern: ", left(pattern, 20))
+		return z
+			}
+		}
+	"integer" :{
+
+	if type(val) ~== "integer"  then{
+	z :=  "Validation Failed: " || val || " is not an integer or number"
+	return z
+	}
+	else{	      
+	  enum := x["enum"]
+	       if \enum then write(space, "   enum: ", fullimage(enum))
+	  const := x["const"]
+		if \const then write(space, "    const: ", left(const, 20))
+	   multipleOf := x["multipleOf"]
+		if \multipleOf then {
+			if val % mulitpleOf ~= 0 then {
+				z := "Validation Failed: " || val || " is not a multiple of: " || multipleOf
+				return z
+			}
+		}
+	   maximum := x["maximum"]
+		if \maximum then {
+			if val > maximum then{
+				 z:= "Validation Failed: " || val || " is greater than the maximum: " || maximum
+				return z
+			}
+		}
+	   exclusiveMaximum := x["exclusiveMaximum"]
+		if \exclusiveMaximum then {
+			if val >= exlusiveMaximum then{
+				 z:= "Validation Failed: " || val || " is greater than or equal to the exclusiveMaximum: " || exclusiveMaximum
+				return z
+			}
+		}
+       	  minimum := x["minimum"]
+		if \minimum then{
+		if val < minimum then {
+			z := "Validation Failed: " || val || " is less than the minimum: " || minimum
+			return z
+		}
+	}
+	  exclusiveMinimum := x["exclusiveMinimum"]
+		if \exclusiveMinimum then {
+			if val <= exclusiveMinimum then{
+			z := "Validation Failed: " || val || " is less than the minimum: " || minimum
+			return z
+		}
+		}
+	}
+	return z
+	}
+
+	 "number":{
+
+	if type(val) ~== "real" then{
+	z :=  "Validation Failed: " || val || " number"
+	return z
+	}
+	else{	      
+	  enum := x["enum"]
+	       if \enum then write(space, "   enum: ", fullimage(enum))
+	  const := x["const"]
+		if \const then write(space, "    const: ", left(const, 20))
+	   multipleOf := x["multipleOf"]
+		if \multipleOf then {
+			if val % mulitpleOf ~= 0 then {
+				z := "Validation Failed: " || val || " is not a multiple of: " || multipleOf
+				return z
+			}
+		}
+	   maximum := x["maximum"]
+		if \maximum then {
+			if val > maximum then{
+				 z:= "Validation Failed: " || val || " is greater than the maximum: " || maximum
+				return z
+			}
+		}
+	   exclusiveMaximum := x["exclusiveMaximum"]
+		if \exclusiveMaximum then {
+			if val >= exlusiveMaximum then{
+				 z:= "Validation Failed: " || val || " is greater than or equal to the exclusiveMaximum: " || exclusiveMaximum
+				return z
+			}
+		}
+       	  minimum := x["minimum"]
+		if \minimum then{
+		if val < minimum then {
+			z := "Validation Failed: " || val || " is less than the minimum: " || minimum
+			return z
+		}
+	}
+	  exclusiveMinimum := x["exclusiveMinimum"]
+		if \exclusiveMinimum then {
+			if val <= exclusiveMinimum then{
+			z := "Validation Failed: " || val || " is less than the minimum: " || minimum
+			return z
+		}
+		}
+	}
+	return z
+	}
+	"&null" :{
+		return "Validation failed: " || x["type"]
+	}
+default: return "Validation Passed"
+	}
+
+		
+end
+#<p>
+#The procedure<tt>validation</tt> has three parameters 
+#<[param obj name of the object]>
+#<[param sch name of  the schema file]>
+#<[param schRoot name of the schema file once more]>
+#The procedure validation recusively goes into the object file and the corresponding level of the Schema file.
+# In each level the procedure  gets the value of each propertiy in the object file and calls the  validcheck() procedure.
+# with the value and the corresponding schema property.
+#
+#
+#
+#<[returns validation passed a string]>
+# other wise 
+#<[returns validation failed a string]>
+#
+#</p>
+
+procedure validation(obj, sch, schRoot)
+if type(obj) == "table" then {
+	pf := validCheck(sch, obj)
+	if pf ~== "Validation Passed" then return pf
+	every k := key(obj) do {
+	if type(obj[k]) == "table" then{
+		pf := validCheck(sch["properties"][k], obj[k])
+		if pf ~== "Validation Passed" then return pf
+		validation(obj[k], sch["properties"][k], schRoot)
+	}
+
+
+
+	else if type(obj[k]) == "list" then{
+		pf := validCheck(sch["properties"][k], obj[k])
+		if pf ~== "Validation Passed" then return pf
+		inc := 1
+		every key(obj[k]) do {
+			if type(obj[k][inc]) == "table" then {
+                           if key(sch["properties"][k]["items"]) == "$ref" then {
+				refitem  := sch["properties"][k]["items"]["$ref"]
+               		 refitem ? {
+                    if ="#/$defs/" | ="#/definitions/" then
+                    {
+                        refitem := tab(0)
+				check := validation(obj[k][inc], schRoot["$defs"][refitem], schRoot)
+				if check ~== "Validation Passed" then return check
+				inc := inc + 1
+				
+                           }
+			}
+			}
+			}
+		
+		
+		}
+	} 
+	else{
+		pf := validCheck(sch["properties"][k], obj[k])
+		if pf ~== "Validation Passed" then return pf
+	}
+	
+	}
+}
+
+return "Validation Passed"
+
+end
+
